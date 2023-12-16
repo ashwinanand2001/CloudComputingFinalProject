@@ -1,4 +1,4 @@
-# importing libraries needed
+''' importing libraries needed
 from pyspark.sql import SparkSession
 from pyspark.ml.feature import Tokenizer, CountVectorizer
 from pyspark.ml.recommendation import ALS
@@ -40,5 +40,53 @@ user_recommendations = model.transform(search_vector_overview)
 # Show top recommendations
 user_recommendations.select("Series_Title", "prediction").orderBy(col("prediction").desc()).show()
 
+'''
+
+# importing libraries needed
+from pyspark.sql import SparkSession
+from pyspark.ml import Pipeline
+from pyspark.ml.feature import Tokenizer, CountVectorizer, VectorAssembler
+from pyspark.sql.functions import col
+from pyspark.ml.regression import LinearRegression
+
+# Initialize Spark session
+spark = SparkSession.builder.appName("MovieRecommendation").getOrCreate()
+
+# making database and reading the data from csv file
+database_path = "/home/ashwin/Desktop/CloudComputingandBigData/FinalProject/database.csv"
+dataset = spark.read.csv(database_path, header=True, inferSchema=True)
+
+
+# selecting columns of data that is needed
+selected_data = dataset.select("Series_Title", "Overview", "IMDB_Rating")
+
+# tokenizing series title and overview
+tokenizer_title = Tokenizer(inputCol="Series_Title", outputCol="title_words")
+tokenizer_overview = Tokenizer(inputCol="Overview", outputCol="overview_words")
+
+# vectorizing series title and overview
+vectorizer_title = CountVectorizer(inputCol="title_words", outputCol="title_features")
+vectorizer_overview = CountVectorizer(inputCol="overview_words", outputCol="overview_features")
+
+# combining all together
+assembler = VectorAssembler(inputCols=["title_features", "overview_features"], outputCol="features")
+
+# training model using linear regression
+lr = LinearRegression(featuresCol="features", labelCol="IMDB_Rating")
+
+# making a pipeline to be used in stagees
+pipeline = Pipeline(stages=[tokenizer_title, tokenizer_overview, vectorizer_title, vectorizer_overview, assembler, lr])
+
+# sending data to the pipeline
+pipeline_model = pipeline.fit(selected_data)
+
+# seach for movie recommendations
+user_search = "Christmas Movies"
+search_data = spark.createDataFrame([(user_search,"")], ["Series_Title","Overview"])
+search_data_transformed = pipeline_model.transform(search_data)
+
+# displaying highes rating for user_search
+user_recommendations = search_data_transformed.select("Series_Title","prediction").orderBy(col("prediction").desc())
+user_recommendations.show()
 
 
